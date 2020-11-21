@@ -3,7 +3,7 @@ This little game is supposed to provide a skeleton implementation for the planne
 hackathon organized by the students union of the Computer Science Faculty of
 University of Vienna.
 
-Last Man Standing Tournament:
+## Last Man Standing Tournament:
 For the provided memory attack pattern, each student provides his or her targetting
 (i.e. process selection, memory adress range selection and payload creation) implementation.
 All processes are then started in a safe environment (e.g. Ubuntu 18.04 Docker) and over 100

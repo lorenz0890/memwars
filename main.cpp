@@ -85,6 +85,19 @@ std::map<int, std::vector<std::pair<std::string, std::string>>> get_memory_mappi
     return map;
 }
 
+std::string make_payload(const unsigned long len) {
+    //https://stackoverflow.com/questions/440133/how-do-i-create-a-random-alpha-numeric-string-in-c
+    std::string tmp_s;
+    static const char alphanum[] =
+            "0123456789"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz";
+    srand( (unsigned) time(NULL) * getpid());
+    for (int i = 0; i < len; ++i)
+        tmp_s += alphanum[rand() % (sizeof(alphanum) - 1)];
+    return tmp_s;
+}
+
 int main() {
     while(true){
         // 1. Hunt phase (select target process and adress range)
@@ -108,9 +121,11 @@ int main() {
         unsigned long len = end_value - start_value;
 
         // 2. Kill phase
+        std::string payload = make_payload(len);
+
         //https://renenyffenegger.ch/notes/Linux/memory/read-write-another-processes-memory
         // 2.1 Acquire target
-        char* proc_mem = static_cast<char *>(malloc(50));
+        char* proc_mem = static_cast<char *>(malloc(len));
         sprintf(proc_mem, "/proc/%d/mem", pid);
         printf("Opening %s, address is %ld\n", proc_mem, start_value);
         int fd_proc_mem = open(proc_mem, O_RDWR);
@@ -127,8 +142,7 @@ int main() {
         // 2.2 Attack target
         if(buf != nullptr){
             printf("\nNow, this string is modified\n");
-            strncpy(buf, "Hello from attacker", len);
-
+            strncpy(buf, payload.c_str(), len);
             lseek(fd_proc_mem, start_value, SEEK_SET);
             if (write (fd_proc_mem, buf , len     ) == -1) {
                 printf("Error while writing\n");

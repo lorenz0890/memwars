@@ -1,14 +1,10 @@
 #include <iostream>
-#include <cstdio>
-#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <array>
 #include <vector>
 #include <sstream>
-#include <tuple>
-#include <string>
 #include <map>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,8 +13,8 @@
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
-#include  <random>
-#include  <iterator>
+#include <random>
+#include <fstream>
 
 template<typename Iter, typename RandomGenerator>
 Iter select_randomly(Iter start, Iter end, RandomGenerator& g) {
@@ -50,9 +46,9 @@ std::string exec(const char* cmd) {
     return result;
 }
 
-std::vector<size_t> get_pids(){
+std::vector<pid_t> get_pids(){
     std::string pid_string = exec("ps -axo pid"); //-axo for all
-    std::vector<size_t> pids;
+    std::vector<pid_t> pids;
     size_t pos = 0;
     while (pids.size() < pid_string.length()){
         try {
@@ -69,18 +65,29 @@ std::vector<size_t> get_pids(){
     return pids;
 }
 
-std::map<int, std::vector<std::pair<std::string, std::string>>> get_memory_mapping(std::vector<size_t>& pids){
-    std::map<int, std::vector<std::pair<std::string, std::string>>> map;
-    for(auto& pid : pids){
-        char cmd_buffer[50];
-        sprintf(cmd_buffer, "cat /proc/%zu/maps", pid);
-        std::string line;
-        std::istringstream stream (exec(cmd_buffer));
-        while (std::getline(stream, line)) {
-            std::string start_addr = line.substr(0, ' ').substr(0, 12);
-            std::string end_addr = line.substr(0, ' ').substr(13, 12);
+/**
+ * Get list of memory mappings (addresses) per process
+ * @param pids PIDs of the processes
+ * @return Map of addresses per process
+ */
+std::map<int, std::vector<std::pair<std::string, std::string>>> get_memory_mapping(std::vector<pid_t>& pids){
+    std::map<pid_t, std::vector<std::pair<std::string, std::string>>> map;
+    std::ifstream procfile;
+    std::string line;
+
+    for(auto& pid : pids) {
+        // get file name
+        std::string filename = "/proc/"+ std::to_string(pid)+"/maps";
+
+        // open proc file with memory map
+        procfile.open(filename);
+        while(std::getline(procfile, line)){
+            std::string start_addr = line.substr(0, line.find('-'));
+            std::string end_addr = line.substr(line.find('-')+1, line.find(' ')-line.find('-'));
             map[pid].push_back(std::make_pair(start_addr,end_addr));
         }
+
+        procfile.close();
     }
     return map;
 }
@@ -93,18 +100,24 @@ std::string make_payload(const unsigned long len) {
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
             "abcdefghijklmnopqrstuvwxyz";
     srand( (unsigned) time(NULL) * getpid());
-    for (int i = 0; i < len; ++i)
+    for (unsigned long i = 0; i < len; ++i)
         tmp_s += alphanum[rand() % (sizeof(alphanum) - 1)];
     return tmp_s;
 }
 
 int main() {
+    // root / sudo is required
+    if( getuid() != 0 ){
+        fprintf(stderr, "ERROR: You need root privileges to execute this program.");
+        return EXIT_FAILURE;
+    }
+
     while(true){
         // 1. Hunt phase (select target process and adress range)
         // 1.1 Observe targets (get PIDs + memory mapping)
-        std::vector<size_t> pids = get_pids();
-        std::map<int, std::vector<std::pair<std::string, std::string>>> memory_map = get_memory_mapping(pids);
-        int pid  = *select_randomly(pids.begin(), pids.end());
+        std::vector<pid_t> pids = get_pids();
+        std::map<pid_t, std::vector<std::pair<std::string, std::string>>> memory_map = get_memory_mapping(pids);
+        pid_t pid  = *select_randomly(pids.begin(), pids.end());
 
         // 1.2 Select target from observed targets (ensure we have valid memory mapping)
         while (memory_map.end() == memory_map.find(pid)){
@@ -154,5 +167,4 @@ int main() {
         free(buf);
         free(proc_mem);
     }
-    return 0;
 }

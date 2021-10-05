@@ -52,7 +52,11 @@ std::vector<pid_t> get_pids(){
     size_t pos = 0;
     while (pids.size() < pid_string.length()){
         try {
-            pids.push_back(stoi(pid_string.substr(pos, pid_string.find('\n'))));
+            pid_t mypid = stoi(pid_string.substr(pos, pid_string.find('\n')));
+            if (getpid() != mypid && getpid() != 1){
+                pids.push_back(mypid);
+            }
+
         }
         catch (std::invalid_argument &i){
             std::cout << i.what() << std::endl;

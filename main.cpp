@@ -33,6 +33,12 @@ Iter select_randomly(Iter start, Iter end) {
     return select_randomly(start, end, gen);
 }
 
+/**
+ * Execute program and get output as string.
+ * @param cmd Command to be executed
+ * @return String of output
+ * @warning Not used any more. To be deleted.
+ */
 std::string exec(const char* cmd) {
     //https://stackoverflow.com/questions/478898/how-do-i-execute-a-command-and-get-the-output-of-the-command-within-c-using-po
     std::array<char, 128> buffer;
@@ -67,7 +73,7 @@ static bool is_number(const char* str){
  * @return vector of process IDs
  * @note Mixed C and C++ function
  */
-std::vector<pid_t> get_valid_pids(const std::string& cmd_praefix = "memvars_"){
+std::vector<pid_t> get_valid_pids(const std::string& cmd_praefix = "memwars_"){
     // Directory /proc, to read all process ids
     DIR *proc_dirf;
     // Entries of /proc
@@ -96,12 +102,14 @@ std::vector<pid_t> get_valid_pids(const std::string& cmd_praefix = "memvars_"){
             sprintf(filename, "/proc/%s/cmdline", entry->d_name);
             cmdline_file = fopen(filename, "r");
             if(cmdline_file == NULL){
-                perror("Could not open cmdline. Skipping entry.");
+                //perror("Could not open cmdline. Skipping entry.");
+                // Ignore error -- it is most likely none of our programs ...
                 continue;
             }
             // Add process ID to vector if it starts with cmd_praefix
             while(fgets(cmdline, sizeof(cmdline),  cmdline_file)){
                 if(strstr(cmdline, cmd_praefix.c_str()) != NULL){
+                    //std::cout << "PID=" << atoi(entry->d_name) << std::endl;
                     process_ids.push_back(atoi(entry->d_name));
                     break;
                 }
@@ -166,12 +174,22 @@ int main() {
         // 1. Hunt phase (select target process and adress range)
         // 1.1 Observe targets (get PIDs + memory mapping)
         std::vector<pid_t> pids = get_valid_pids();
+        if( pids.size() == 0 ){
+            std::cerr << "Error: Your program name does NOT match our naming convention! "
+                         "Anyway, there is also no other process found yet.\n";
+            return EXIT_FAILURE;
+        }
         std::map<pid_t, std::vector<std::pair<std::string, std::string>>> memory_map = get_memory_mapping(pids);
-        pid_t pid  = *select_randomly(pids.begin(), pids.end());
 
         // 1.2 Select target from observed targets (ensure we have valid memory mapping)
-        while (memory_map.end() == memory_map.find(pid)){
+        pid_t pid  = *select_randomly(pids.begin(), pids.end());
+        while ( memory_map.find(pid) == memory_map.end() ){
             pid  = *select_randomly(pids.begin(), pids.end());
+        }
+
+        if( pid == getpid() ){
+            // Do not kill your own program.
+            continue;
         }
 
         // 1.2.1 Select attack surface of selected target (which memory range we attack)
@@ -193,8 +211,9 @@ int main() {
         printf("Opening %s, address is %ld\n", proc_mem, start_value);
         int fd_proc_mem = open(proc_mem, O_RDWR);
         if (fd_proc_mem == -1) {
-            printf("Could not open %s\n", proc_mem);
-            exit(1);
+            fprintf(stderr, "Could not open %s\n", proc_mem);
+            //exit(1);
+            continue;
         }
         char* buf = static_cast<char *>(malloc(len));
         lseek(fd_proc_mem, start_value, SEEK_SET);

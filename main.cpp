@@ -109,7 +109,7 @@ std::vector<pid_t> get_valid_pids(const std::string& cmd_praefix = "memwars_"){
             // Add process ID to vector if it starts with cmd_praefix
             while(fgets(cmdline, sizeof(cmdline),  cmdline_file)){
                 if(strstr(cmdline, cmd_praefix.c_str()) != NULL){
-                    //std::cout << "PID=" << atoi(entry->d_name) << std::endl;
+                    //std::cout << "PID=" << atoi(entry->d_name) << ", self=" << getpid() << std::endl;
                     process_ids.push_back(atoi(entry->d_name));
                     break;
                 }
@@ -174,10 +174,10 @@ int main() {
         // 1. Hunt phase (select target process and adress range)
         // 1.1 Observe targets (get PIDs + memory mapping)
         std::vector<pid_t> pids = get_valid_pids();
-        if( pids.size() == 0 ){
-            std::cerr << "Error: Your program name does NOT match our naming convention! "
-                         "Anyway, there is also no other process found yet.\n";
-            return EXIT_FAILURE;
+        if( pids.size() < 2 ){
+            std::cerr << "Error: No other process found yet. Skipping ...\n";
+            sleep(1);
+            continue;
         }
         std::map<pid_t, std::vector<std::pair<std::string, std::string>>> memory_map = get_memory_mapping(pids);
 
@@ -187,6 +187,7 @@ int main() {
             pid  = *select_randomly(pids.begin(), pids.end());
         }
 
+        // TODO: REMOVE when merging ...
         if( pid == getpid() ){
             // Do not kill your own program.
             continue;
@@ -218,17 +219,17 @@ int main() {
         char* buf = static_cast<char *>(malloc(len));
         lseek(fd_proc_mem, start_value, SEEK_SET);
         read (fd_proc_mem, buf , len);
-        printf("String at %ld in process %d is:\n", start_value, pid);
-        printf("  %s\n", buf);
+        //printf("String at %ld in process %d is:\n", start_value, pid);
+        //printf("  %s\n", buf);
 
         // 2.2 Attack target
         if(buf != nullptr){
             printf("\nNow, this string is modified\n");
             strncpy(buf, payload.c_str(), len);
             lseek(fd_proc_mem, start_value, SEEK_SET);
-            if (write (fd_proc_mem, buf , len     ) == -1) {
+            if (write (fd_proc_mem, buf , len ) == -1) {
                 printf("Error while writing\n");
-                exit(1);
+                //exit(1);
             }
         }
 

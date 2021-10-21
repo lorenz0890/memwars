@@ -34,27 +34,7 @@ Iter select_randomly(Iter start, Iter end) {
 }
 
 /**
- * Execute program and get output as string.
- * @param cmd Command to be executed
- * @return String of output
- * @warning Not used any more. To be deleted.
- */
-std::string exec(const char* cmd) {
-    //https://stackoverflow.com/questions/478898/how-do-i-execute-a-command-and-get-the-output-of-the-command-within-c-using-po
-    std::array<char, 128> buffer;
-    std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
-    }
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result += buffer.data();
-    }
-    return result;
-}
-
-/**
- * Checks if a c string is a number
+ * Checks if a C string is a number
  * @param str input string
  * @return true if string is numeric, false otherwise
  */
@@ -229,6 +209,7 @@ int main() {
             lseek(fd_proc_mem, start_value, SEEK_SET);
             if (write (fd_proc_mem, buf , len ) == -1) {
                 printf("Error while writing\n");
+                // Likely, a read-only section was found -- try next section ...
                 //exit(1);
             }
         }

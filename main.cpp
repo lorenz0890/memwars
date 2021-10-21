@@ -1,3 +1,4 @@
+// C++ headers
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -6,15 +7,15 @@
 #include <vector>
 #include <sstream>
 #include <map>
-#include <stdio.h>
-#include <stdlib.h>
-// #include <sys/mman.h>
+// Dirty old C headers
+#include <cstdio>
+#include <cstdlib>
 #include <fcntl.h>
-#include <errno.h>
 #include <unistd.h>
-#include <string.h>
+#include <cstring>
 #include <random>
 #include <fstream>
+#include <dirent.h>
 
 template<typename Iter, typename RandomGenerator>
 Iter select_randomly(Iter start, Iter end, RandomGenerator& g) {
@@ -46,27 +47,72 @@ std::string exec(const char* cmd) {
     return result;
 }
 
-std::vector<pid_t> get_pids(){
-    std::string pid_string = exec("ps -axo pid"); //-axo for all
-    std::vector<pid_t> pids;
-    size_t pos = 0;
-    while (pids.size() < pid_string.length()){
-        try {
-            pid_t mypid = stoi(pid_string.substr(pos, pid_string.find('\n')));
-            if (getpid() != mypid && getpid() != 1){
-                pids.push_back(mypid);
-            }
-
-        }
-        catch (std::invalid_argument &i){
-            std::cout << i.what() << std::endl;
-        }
-        catch (std::out_of_range &i){
-            break;
-        }
-        pos+=6;
+/**
+ * Checks if a c string is a number
+ * @param str input string
+ * @return true if string is numeric, false otherwise
+ */
+static bool is_number(const char* str){
+    while( *str != '\0' ){
+        if(! isdigit(*str))
+            return false;
+        str++;
     }
-    return pids;
+    return true;
+}
+
+/**
+ * Gets all process ids of which their execution path starts with cmd_praefix
+ * @param cmd_praefix part execution path (needle)
+ * @return vector of process IDs
+ * @note Mixed C and C++ function
+ */
+std::vector<pid_t> get_valid_pids(const std::string& cmd_praefix = "memvars_"){
+    // Directory /proc, to read all process ids
+    DIR *proc_dirf;
+    // Entries of /proc
+    struct dirent *entry;
+    // File with the cmdline
+    FILE *cmdline_file;
+    // Helper variables
+    char filename[1024], cmdline[2048];
+    // Vector with process ids
+    std::vector<pid_t> process_ids;
+
+    // Open proc dir to get all process IDs
+    proc_dirf = opendir("/proc");
+    if( proc_dirf == NULL ){
+        perror("Could not open /proc dir");
+        exit(1);
+    }
+    // Read all entries (i.e. files, dirs) of /proc
+    while( (entry = readdir(proc_dirf)) != NULL ){
+#ifndef _DIRENT_HAVE_D_TYPE
+    #error Cannot find dirent type. Use another linux ...
+#endif
+        // Entry is directory and the name is only a number (process ID)
+        if( entry->d_type == DT_DIR && is_number(entry->d_name) ){
+            // Check whether or not the command line includes cmd_praefix
+            sprintf(filename, "/proc/%s/cmdline", entry->d_name);
+            cmdline_file = fopen(filename, "r");
+            if(cmdline_file == NULL){
+                perror("Could not open cmdline. Skipping entry.");
+                continue;
+            }
+            // Add process ID to vector if it starts with cmd_praefix
+            while(fgets(cmdline, sizeof(cmdline),  cmdline_file)){
+                if(strstr(cmdline, cmd_praefix.c_str()) != NULL){
+                    process_ids.push_back(atoi(entry->d_name));
+                    break;
+                }
+            }
+            fclose(cmdline_file);
+        }
+    }
+
+    closedir(proc_dirf);
+
+    return process_ids;
 }
 
 /**
@@ -112,14 +158,14 @@ std::string make_payload(const unsigned long len) {
 int main() {
     // root / sudo is required
     if( getuid() != 0 ){
-        fprintf(stderr, "ERROR: You need root privileges to execute this program.");
+        fprintf(stderr, "ERROR: You need root privileges to execute this program.\n");
         return EXIT_FAILURE;
     }
 
     while(true){
         // 1. Hunt phase (select target process and adress range)
         // 1.1 Observe targets (get PIDs + memory mapping)
-        std::vector<pid_t> pids = get_pids();
+        std::vector<pid_t> pids = get_valid_pids();
         std::map<pid_t, std::vector<std::pair<std::string, std::string>>> memory_map = get_memory_mapping(pids);
         pid_t pid  = *select_randomly(pids.begin(), pids.end());
 
@@ -165,7 +211,7 @@ int main() {
                 printf("Error while writing\n");
                 exit(1);
             }
-        };
+        }
 
         // 2.3 Clean up
         free(buf);

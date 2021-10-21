@@ -1,20 +1,19 @@
 // C++ headers
 #include <iostream>
 #include <memory>
-#include <stdexcept>
 #include <string>
-#include <array>
 #include <vector>
 #include <sstream>
 #include <map>
+#include <random>
+#include <fstream>
 // Dirty old C headers
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+// Linux/Unix/POSIX headers
 #include <fcntl.h>
 #include <unistd.h>
-#include <cstring>
-#include <random>
-#include <fstream>
 #include <dirent.h>
 
 template<typename Iter, typename RandomGenerator>
@@ -130,16 +129,24 @@ std::map<int, std::vector<std::pair<std::string, std::string>>> get_memory_mappi
     return map;
 }
 
-std::string make_payload(const unsigned long len) {
-    //https://stackoverflow.com/questions/440133/how-do-i-create-a-random-alpha-numeric-string-in-c
-    std::string tmp_s;
-    static const char alphanum[] =
+/**
+ * Generate random data of size len from alphabet
+ * @param len requested size of string
+ * @return random data as string
+ */
+std::string make_payload(const size_t len) {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+
+    static const char alphabet[] =
             "0123456789"
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
             "abcdefghijklmnopqrstuvwxyz";
-    srand( (unsigned) time(NULL) * getpid());
-    for (unsigned long i = 0; i < len; ++i)
-        tmp_s += alphanum[rand() % (sizeof(alphanum) - 1)];
+
+    std::string tmp_s (len, 0);
+    std::uniform_int_distribution<> dis(0, sizeof(alphabet) - 2); // -2 because: without \0 and from 0 to n-1
+    for (size_t i = 0; i < len; ++i)
+        tmp_s[i] = alphabet[dis(gen)];
     return tmp_s;
 }
 
@@ -149,6 +156,11 @@ int main() {
         fprintf(stderr, "ERROR: You need root privileges to execute this program.\n");
         return EXIT_FAILURE;
     }
+
+    // Wait before starting to kill, so that the process IDs can be registered by the daemon
+    // You are NOT allowed to remove or edit this line!
+    // TODO: Uncomment before merging ...
+    sleep(3);
 
     while(true){
         // 1. Hunt phase (select target process and adress range)
@@ -162,7 +174,9 @@ int main() {
         std::map<pid_t, std::vector<std::pair<std::string, std::string>>> memory_map = get_memory_mapping(pids);
 
         // 1.2 Select target from observed targets (ensure we have valid memory mapping)
-        pid_t pid  = *select_randomly(pids.begin(), pids.end());
+        // You might want to change the strategy of choosing the process ID or mamory apping from random
+        // to something else or want to add some checks, ...
+        pid_t pid = *select_randomly(pids.begin(), pids.end());
         while ( memory_map.find(pid) == memory_map.end() ){
             pid  = *select_randomly(pids.begin(), pids.end());
         }
@@ -174,6 +188,8 @@ int main() {
         }
 
         // 1.2.1 Select attack surface of selected target (which memory range we attack)
+        // Maybe you want to choose another strategy for selecting the memory blocks or
+        // you want to add some checks ...
         auto addr_rng = *select_randomly(memory_map[pid].begin(), (memory_map[pid].end()));
         std::string start_addr = addr_rng.first;
         std::string end_addr  = addr_rng.second;
@@ -183,11 +199,12 @@ int main() {
         unsigned long len = end_value - start_value;
 
         // 2. Kill phase
+        // Generate random data. You may change, if you want ...
         std::string payload = make_payload(len);
 
         //https://renenyffenegger.ch/notes/Linux/memory/read-write-another-processes-memory
         // 2.1 Acquire target
-        char* proc_mem = static_cast<char *>(malloc(len));
+        char proc_mem[1024]; // Filename of memory file
         sprintf(proc_mem, "/proc/%d/mem", pid);
         printf("Opening %s, address is %ld\n", proc_mem, start_value);
         int fd_proc_mem = open(proc_mem, O_RDWR);
@@ -196,26 +213,27 @@ int main() {
             //exit(1);
             continue;
         }
-        char* buf = static_cast<char *>(malloc(len));
+        char* buf = new char[len];
+        /* IF YOU WANT TO READ THE VALUES OF THE MEMORY, YOU CAN DO IT LIKE THIS.
+         * Feel free to do, if you want ...
         lseek(fd_proc_mem, start_value, SEEK_SET);
         read (fd_proc_mem, buf , len);
-        //printf("String at %ld in process %d is:\n", start_value, pid);
-        //printf("  %s\n", buf);
+        printf("String at %ld in process %d is:\n", start_value, pid);
+        printf("  %s\n", buf);
+         */
 
         // 2.2 Attack target
-        if(buf != nullptr){
-            printf("\nNow, this string is modified\n");
-            strncpy(buf, payload.c_str(), len);
-            lseek(fd_proc_mem, start_value, SEEK_SET);
-            if (write (fd_proc_mem, buf , len ) == -1) {
-                printf("Error while writing\n");
-                // Likely, a read-only section was found -- try next section ...
-                //exit(1);
-            }
+        printf("\nNow, this string is modified\n");
+        strncpy(buf, payload.c_str(), len);
+        lseek(fd_proc_mem, start_value, SEEK_SET);
+        if (write(fd_proc_mem, buf, len) == -1) {
+            printf("Error while writing\n");
+            // Eventually, another process has already killed this one,
+            // this section cannot be written to or something else.
+            // Try next section (next iteration), or try to fix ...
         }
 
         // 2.3 Clean up
-        free(buf);
-        free(proc_mem);
+        delete[] buf;
     }
 }

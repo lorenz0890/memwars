@@ -9,6 +9,11 @@
 #include <csignal>
 #include <algorithm>
 
+/**
+ * Kills the process with process ID pid
+ * @param pid process id of process
+ * @return 0 on success, any other value otherwise
+ */
 int kill_process(pid_t pid) {
     return kill(pid, SIGHUP);
 }
@@ -28,6 +33,10 @@ static bool is_number(const char *str) {
 }
 
 
+/**
+ * Main function
+ * @return 0 on success, any other value otherwise
+ */
 int main() {
     const std::string cmd_praefix = "memwars_";
 

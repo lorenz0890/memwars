@@ -159,7 +159,6 @@ int main() {
 
     // Wait before starting to kill, so that the process IDs can be registered by the daemon
     // You are NOT allowed to remove or edit this line!
-    // TODO: Uncomment before merging ...
     sleep(3);
 
     while(true){
@@ -179,12 +178,6 @@ int main() {
         pid_t pid = *select_randomly(pids.begin(), pids.end());
         while ( memory_map.find(pid) == memory_map.end() ){
             pid  = *select_randomly(pids.begin(), pids.end());
-        }
-
-        // TODO: REMOVE when merging ...
-        if( pid == getpid() ){
-            // Do not kill your own program.
-            continue;
         }
 
         // 1.2.1 Select attack surface of selected target (which memory range we attack)

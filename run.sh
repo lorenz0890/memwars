@@ -1,8 +1,7 @@
 #!/bin/bash
 
+# Start the two programs at the same time.
 execute_at=`date --date "now+1min" +"%H:%M"`
 
-for i in {1..500}
-do
-  echo "./memwars_test $i" | at $execute_at
-done
+echo "./memwars_axxxxxxxx" | at $execute_at
+echo "./memwars_ayyyyyyyy" | at $execute_at
